@@ -24,6 +24,24 @@ impl AlmanacRange {
             Some(self.destination_start + value - self.source_start)
         }
     }
+
+    pub fn map_range(&self, range: ValueRange) -> Option<AlmanacRange> {
+        if range.start >= self.source_start + self.length
+            || range.start + range.length <= self.source_start
+        {
+            None
+        } else {
+            let source_start = range.start.max(self.source_start);
+            let destination_start = self.destination_start + source_start - self.source_start;
+            let length =
+                (range.start + range.length).min(self.source_start + self.length) - source_start;
+            Some(AlmanacRange {
+                destination_start,
+                source_start,
+                length,
+            })
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -53,6 +71,44 @@ impl AlmanacRanges {
             }
         }
         value
+    }
+
+    pub fn map_range(&self, range: ValueRange) -> Vec<ValueRange> {
+        let mut used_ranges = vec![];
+        for map_range in &self.ranges {
+            if let Some(mapped_range) = map_range.map_range(range) {
+                used_ranges.push(mapped_range);
+            }
+        }
+        used_ranges.sort_by(|a, b| a.source_start.cmp(&b.source_start));
+        let mut current_index = range.start;
+        let mut to_add = vec![];
+        for used_range in &used_ranges {
+            if current_index < used_range.source_start {
+                to_add.push(AlmanacRange {
+                    source_start: current_index,
+                    destination_start: current_index,
+                    length: used_range.source_start - current_index,
+                });
+            }
+            current_index = used_range.source_start + used_range.length;
+        }
+        if current_index < range.start + range.length {
+            to_add.push(AlmanacRange {
+                source_start: current_index,
+                destination_start: current_index,
+                length: range.start + range.length - current_index,
+            });
+        }
+
+        used_ranges
+            .into_iter()
+            .chain(to_add)
+            .map(|x| ValueRange {
+                start: x.destination_start,
+                length: x.length,
+            })
+            .collect()
     }
 }
 
@@ -109,6 +165,12 @@ impl Almanac {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+struct ValueRange {
+    start: u64,
+    length: u64,
+}
+
 pub fn day5() {
     let almanac = Almanac::parse(INPUT);
     let location_numbers = almanac
@@ -124,4 +186,24 @@ pub fn day5() {
         .map(|x| almanac.humidity_to_location.map_value(x))
         .collect::<Vec<_>>();
     println!("Day 5 part 1: {:?}", location_numbers.iter().min().unwrap());
+
+    let location_numbers = almanac
+        .seeds
+        .chunks(2)
+        .map(|x| ValueRange {
+            start: x[0],
+            length: x[1],
+        })
+        .flat_map(|x| almanac.seed_to_soil.map_range(x))
+        .flat_map(|x| almanac.soil_to_fertilizer.map_range(x))
+        .flat_map(|x| almanac.fertilizer_to_water.map_range(x))
+        .flat_map(|x| almanac.water_to_light.map_range(x))
+        .flat_map(|x| almanac.light_to_temperature.map_range(x))
+        .flat_map(|x| almanac.temperature_to_humidity.map_range(x))
+        .flat_map(|x| almanac.humidity_to_location.map_range(x))
+        .collect::<Vec<_>>();
+    println!(
+        "Day 5 part 2: {:?}",
+        location_numbers.iter().map(|x| x.start).min().unwrap()
+    );
 }
