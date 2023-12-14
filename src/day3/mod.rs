@@ -72,6 +72,35 @@ impl EngineSchematic {
             .into_iter()
             .filter(|x| self.part_number_near_symbol(*x))
     }
+
+    pub fn gears(&self) -> Vec<Gear> {
+        let part_numbers = self.part_numbers().collect::<Vec<_>>();
+        self.grid
+            .iter_cols()
+            .enumerate()
+            .flat_map(|(y, row)| row.enumerate().map(move |(x, cell)| (x, y, cell)))
+            .filter(|(_, _, cell)| matches!(cell, GridCell::Symbol('*')))
+            .filter_map(|(x, y, _)| {
+                let mut parts = vec![];
+                for part_number in &part_numbers {
+                    // check if part is adjacent/diagonal to symbol
+                    if ((part_number.x as isize - x as isize).abs() <= 1
+                        || ((part_number.x + part_number.length - 1) as isize - x as isize).abs()
+                            <= 1
+                        || (x >= part_number.x && x < part_number.x + part_number.length))
+                        && (part_number.y as isize - y as isize).abs() <= 1
+                    {
+                        parts.push(*part_number);
+                    }
+                }
+                parts
+                    .as_slice()
+                    .try_into()
+                    .ok()
+                    .map(|parts| Gear { parts, x, y })
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -80,6 +109,17 @@ pub struct PartNumber {
     y: usize,
     length: usize,
     value: u32,
+}
+#[derive(Debug, Copy, Clone)]
+pub struct Gear {
+    parts: [PartNumber; 2],
+    x: usize,
+    y: usize,
+}
+impl Gear {
+    pub fn ratio(&self) -> u32 {
+        self.parts[0].value * self.parts[1].value
+    }
 }
 
 #[derive(Debug, Default)]
@@ -99,4 +139,8 @@ pub fn day3() {
     let engine = EngineSchematic::parse(INPUT);
     let sum = engine.part_numbers().map(|x| x.value).sum::<u32>();
     println!("Day 3 part 1: {}", sum);
+
+    let gears = engine.gears();
+    let sum = gears.iter().map(Gear::ratio).sum::<u32>();
+    println!("Day 3 part 2: {}", sum);
 }
