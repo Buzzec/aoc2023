@@ -46,35 +46,33 @@ impl From<char> for Card {
         }
     }
 }
+impl Card {
+    pub fn compare_with_joker(&self, other: &Self) -> Ordering {
+        let self_val = match self {
+            Card::J => 0,
+            x => *x as u8 + 1,
+        };
+        let other_val = match other {
+            Card::J => 0,
+            x => *x as u8 + 1,
+        };
 
+        self_val.cmp(&other_val)
+    }
+}
+
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone)]
 enum HandType {
-    FiveOfAKind(Card),
-    FourOfAKind { four: Card, kicker: Card },
-    FullHouse { three: Card, two: Card },
-    ThreeOfAKind { three: Card, kickers: [Card; 2] },
-    TwoPair { high: Card, low: Card, kicker: Card },
-    OnePair { pair: Card, kickers: [Card; 3] },
-    HighCard([Card; 5]),
-}
-impl HandType {
-    pub fn type_val(&self) -> usize {
-        match self {
-            HandType::FiveOfAKind(_) => 6,
-            HandType::FourOfAKind { .. } => 5,
-            HandType::FullHouse { .. } => 4,
-            HandType::ThreeOfAKind { .. } => 3,
-            HandType::TwoPair { .. } => 2,
-            HandType::OnePair { .. } => 1,
-            HandType::HighCard(_) => 0,
-        }
-    }
-
-    pub fn compare_by_type(&self, other: &Self) -> Ordering {
-        self.type_val().cmp(&other.type_val())
-    }
+    FiveOfAKind = 6,
+    FourOfAKind = 5,
+    FullHouse = 4,
+    ThreeOfAKind = 3,
+    TwoPair = 2,
+    OnePair = 1,
+    HighCard = 0,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 struct Hand([Card; 5]);
 impl Hand {
     pub fn parse(input: &str) -> Self {
@@ -93,61 +91,72 @@ impl Hand {
         counts
     }
 
-    pub fn hand_type(&self) -> HandType {
-        let counts = self.hand_counts();
-        if counts.values().any(|v| *v == 5) {
-            HandType::FiveOfAKind(self.0[0])
-        } else if let Some(card) = counts.iter().find(|(_, v)| **v == 4).map(|(c, _)| *c) {
-            HandType::FourOfAKind {
-                four: card,
-                kicker: self.into_iter().find(|c| *c != card).unwrap(),
-            }
-        } else if let Some(card) = counts.iter().find(|(_, v)| **v == 3).map(|(c, _)| c) {
-            let mut other = counts
+    pub fn hand_type(&self, jokers: bool) -> HandType {
+        let mut counts = self.hand_counts();
+        let joker_count = if jokers {
+            let out = counts.get(&Card::J).copied().unwrap_or(0);
+            counts.remove(&Card::J);
+            out
+        } else {
+            0
+        };
+        if counts.values().any(|v| *v >= 5 - joker_count) || joker_count >= 5 {
+            HandType::FiveOfAKind
+        } else if counts.iter().any(|(_, v)| *v >= 4 - joker_count) {
+            HandType::FourOfAKind
+        } else if let Some((card, count)) = counts.iter().find(|(_, v)| **v >= 3 - joker_count) {
+            let used_jokers = 3 - count;
+            if counts
                 .iter()
-                .filter(|(_, v)| **v != 3)
-                .map(|(c, _)| *c)
-                .collect::<Vec<_>>();
-            if other.len() == 1 {
-                HandType::FullHouse {
-                    three: *card,
-                    two: other[0],
-                }
+                .filter(|(c, _)| *c != card)
+                .any(|(_, v)| *v >= 2 - joker_count + used_jokers)
+            {
+                HandType::FullHouse
             } else {
-                other.sort_by_key(|c| Reverse(*c));
-                HandType::ThreeOfAKind {
-                    three: *card,
-                    kickers: other.try_into().unwrap(),
-                }
+                HandType::ThreeOfAKind
             }
         } else {
+            let mut used_jokers = 0;
             let mut twos = counts
                 .iter()
-                .filter(|(_, v)| **v == 2)
+                .filter(|(_, v)| {
+                    let jokers_to_use = 2u8.saturating_sub(**v).min(joker_count - used_jokers);
+                    if **v == 2 - jokers_to_use {
+                        used_jokers += jokers_to_use;
+                        true
+                    } else {
+                        false
+                    }
+                })
                 .map(|(c, _)| c)
                 .collect::<Vec<_>>();
             if twos.len() == 2 {
                 twos.sort_by_key(|c| Reverse(*c));
-                HandType::TwoPair {
-                    high: *twos[0],
-                    low: *twos[1],
-                    kicker: *self.0.iter().find(|c| !twos.contains(c)).unwrap(),
-                }
+                HandType::TwoPair
             } else if twos.len() == 1 {
-                let mut other = counts
-                    .iter()
-                    .filter(|(_, v)| **v != 2)
-                    .map(|(c, _)| *c)
-                    .collect::<Vec<_>>();
-                other.sort_by_key(|c| Reverse(*c));
-                HandType::OnePair {
-                    pair: *twos[0],
-                    kickers: other.as_slice().try_into().unwrap(),
-                }
+                HandType::OnePair
             } else {
-                let mut out = self.0.to_vec();
-                out.sort_by_key(|c| Reverse(*c));
-                HandType::HighCard(out.as_slice().try_into().unwrap())
+                HandType::HighCard
+            }
+        }
+    }
+
+    pub fn cmp_with_jokers(&self, other: &Self) -> Ordering {
+        if self == other {
+            return Ordering::Equal;
+        }
+        let type_compare = self.hand_type(true).cmp(&other.hand_type(true));
+        if type_compare != Ordering::Equal {
+            type_compare
+        } else {
+            let mut self_iter = self.iter();
+            let mut other_iter = other.iter();
+            loop {
+                let next = self_iter.next();
+                let result = next.unwrap().compare_with_joker(other_iter.next().unwrap());
+                if result != Ordering::Equal {
+                    return result;
+                }
             }
         }
     }
@@ -164,7 +173,7 @@ impl PartialOrd for Hand {
         if self == other {
             return Some(Ordering::Equal);
         }
-        let type_compare = self.hand_type().compare_by_type(&other.hand_type());
+        let type_compare = self.hand_type(false).cmp(&other.hand_type(false));
         if type_compare != Ordering::Equal {
             Some(type_compare)
         } else {
@@ -177,6 +186,11 @@ impl PartialOrd for Hand {
                 }
             }
         }
+    }
+}
+impl Ord for Hand {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 
@@ -204,4 +218,13 @@ pub fn day7() {
         .map(|(i, HandAndBid { bid, .. })| (i + 1) as u64 * *bid)
         .sum::<u64>();
     println!("Day 7 part 1: {}", sum);
+
+    let mut hands_and_bids = INPUT.lines().map(HandAndBid::parse).collect::<Vec<_>>();
+    hands_and_bids.sort_by(|x, y| x.hand.cmp_with_jokers(&y.hand));
+    let sum = hands_and_bids
+        .iter()
+        .enumerate()
+        .map(|(i, HandAndBid { bid, .. })| (i + 1) as u64 * *bid)
+        .sum::<u64>();
+    println!("Day 7 part 2: {}", sum);
 }
