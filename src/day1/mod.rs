@@ -1,5 +1,4 @@
 use std::cmp::Reverse;
-use std::iter::Rev;
 
 const INPUT: &str = include_str!("input");
 const TEST_INPUT: &str = include_str!("test_input");
