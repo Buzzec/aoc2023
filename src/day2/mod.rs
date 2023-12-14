@@ -28,6 +28,10 @@ impl CubeCount {
         }
         out
     }
+
+    pub fn power(&self) -> u32 {
+        self.red * self.green * self.blue
+    }
 }
 impl Add for CubeCount {
     type Output = CubeCount;
@@ -70,6 +74,16 @@ impl Game {
         }
         true
     }
+
+    pub fn min_required(&self) -> CubeCount {
+        let mut out = CubeCount::default();
+        for pull in &self.pulls {
+            out.red = out.red.max(pull.red);
+            out.green = out.green.max(pull.green);
+            out.blue = out.blue.max(pull.blue);
+        }
+        out
+    }
 }
 
 pub fn day2() {
@@ -81,10 +95,17 @@ pub fn day2() {
     let games = INPUT.lines().map(Game::parse).collect::<Vec<_>>();
 
     let mut sum = 0;
-    for game in games {
+    for game in &games {
         if game.is_possible(MAX_CUBES) {
             sum += game.game_number;
         }
     }
     println!("Day 2 part 1: {}", sum);
+
+    let mut sum = 0;
+    for game in games {
+        let min_required = game.min_required();
+        sum += min_required.power();
+    }
+    println!("Day 2 part 2: {}", sum);
 }
