@@ -43,6 +43,42 @@ impl Race {
         out
     }
 
+    pub fn parse_no_split(input: &str) -> Vec<Self> {
+        let mut lines = input.lines();
+        let mut times = lines
+            .next()
+            .unwrap()
+            .split_at("Time:".len())
+            .1
+            .trim()
+            .to_string();
+        while times.contains(" ") {
+            times = times.replace(" ", "");
+        }
+        let times = times.split(' ').map(|x| x.trim().parse::<u64>().unwrap());
+        let mut distances = lines
+            .next()
+            .unwrap()
+            .split_at("Distance:".len())
+            .1
+            .trim()
+            .to_string();
+        while distances.contains(" ") {
+            distances = distances.replace(" ", "");
+        }
+        let distances = distances
+            .split(' ')
+            .map(|x| x.trim().parse::<u64>().unwrap());
+        let mut out = vec![];
+        for (time, distance) in times.zip(distances) {
+            out.push(Self {
+                time,
+                distance_record: distance,
+            });
+        }
+        out
+    }
+
     pub fn solve_race_for_distance(&self, distance: u64) -> [f64; 2] {
         let sqrt = ((self.time as f64).powi(2) - 4.0 * distance as f64).sqrt();
         [
@@ -65,4 +101,8 @@ pub fn day6() {
     let races = Race::parse(INPUT);
     let win_counts = races.iter().map(Race::winning_count).collect::<Vec<_>>();
     println!("Day 6 part 1: {}", win_counts.iter().product::<u64>());
+
+    let races = Race::parse_no_split(INPUT);
+    let win_counts = races.iter().map(Race::winning_count).collect::<Vec<_>>();
+    println!("Day 6 part 2: {}", win_counts.iter().product::<u64>());
 }
