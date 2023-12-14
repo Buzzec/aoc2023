@@ -46,7 +46,6 @@ pub fn day1() {
         }
         if let (Some(first), Some(last)) = (first, last) {
             let add = first.to_digit(10).unwrap() * 10 + last.to_digit(10).unwrap();
-            println!("{} = {}", line, add);
             sum += add;
         } else {
             panic!("Line has no numbers");
